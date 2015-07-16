@@ -4,6 +4,7 @@
 
 var nodemailer = require('nodemailer');
 var htmlToText = require('nodemailer-html-to-text').htmlToText;
+var emailTemplates = require('email-templates');
 var ejs = require('ejs');
 var fs = require('fs');
 var path = require('path');
@@ -27,27 +28,20 @@ module.exports = function Email(sails) {
   var transport;
   var self;
 
-  var compileTemplate = function (view, data, cb) {
-    // Use Sails View Hook if available
-    if (sails.hooks.views && sails.hooks.views.render) {
-      var relPath = path.relative(sails.config.paths.views, view);
-      sails.hooks.views.render(relPath, data, cb);
-      return;
-    }
-
-    // No Sails View hook, fallback to ejs
-    fs.readFile(view + '.ejs', function (err, source) {
-      if (err) return cb(err);
-
-      try {
-        var compileFn = ejs.compile((source || "").toString(), {
-          cache: true, filename: view
-        });
-
-        cb(null, compileFn(data));
-      } catch (e) {
-        return cb(e);
-      }
+  var compileTemplate = function (templateDir, template, data, cb) {
+    // use email-templates
+    emailTemplates(templateDir, function (err, tpl) {
+        if (err) {
+            return cb(err, null);
+        } else {
+            tpl(template, data, function (err, html, text) {
+                if (err) {
+                    return cb(err, null);
+                } else {
+                    return cb(null, {html: html, text: text});
+                }
+            });
+        }
     });
   }
 
@@ -123,8 +117,6 @@ module.exports = function Email(sails) {
             }));
           }
 
-          // Auto generate text
-          transport.use('compile', htmlToText());
           return cb();
         }
         catch (e) {
@@ -160,26 +152,16 @@ module.exports = function Email(sails) {
 
       async.auto({
 
-            // Grab the HTML version of the email template
-            compileHtmlTemplate: function (next) {
-              compileTemplate(templatePath + "/html", data, next)
-            },
-
-            // Grab the Text version of the email template
-            compileTextTemplate: function (next) {
-              compileTemplate(templatePath + "/text", data, function (err, html) {
-                // Don't exit out if there is an error, we can generate plaintext
-                // from the HTML version of the template.
-                if (err) return next();
-                next(null, html)
-              })
+            // Grab the email templates
+            compileTemplate: function (next) {
+              compileTemplate(templateDir, template, data, next)
             },
 
             // Send the email
-            sendEmail: ['compileHtmlTemplate', 'compileTextTemplate', function (next, results) {
+            sendEmail: ['compileTemplate', function (next, results) {
 
-              defaultOptions.html = results.compileHtmlTemplate;
-              if (results.compileTextTemplate) defaultOptions.text = results.compileTextTemplate;
+              defaultOptions.html = results.compileTemplate.html;
+              defaultOptions.text = results.compileTemplate.text;
 
               // `options`, e.g.
               // {
