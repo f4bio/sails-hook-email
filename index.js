@@ -8,7 +8,8 @@ var emailTemplates = require('email-templates');
 var ejs = require('ejs');
 var fs = require('fs');
 var path = require('path');
-
+var async = require('async');
+var _ = require('lodash');
 
 /**
  * Email Hook
@@ -43,7 +44,7 @@ module.exports = function Email(sails) {
             });
         }
     });
-  }
+  };
 
   return {
 
@@ -151,7 +152,6 @@ module.exports = function Email(sails) {
       sails.log.verbose('EMAILING:', options);
 
       async.auto({
-
             // Grab the email templates
             compileTemplate: function (next) {
               compileTemplate(templateDir, template, data, next)
